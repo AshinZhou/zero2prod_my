@@ -22,6 +22,6 @@ async fn main() -> std::io::Result<()> {
     let connection_pool = PgPoolOptions::new()
         .acquire_timeout(std::time::Duration::from_secs(2))
         .connect_lazy(&configuration_string.expose_secret())
-        .expect("Failed to create Postgres connection pool.");
+        .expect("Failed to create Postgres connection pool1.");
     run(listener, connection_pool)?.await
 }
