@@ -1,0 +1,7 @@
+.env
+.idea
+target/
+tests/
+Dockerfile
+scripts/
+migrations/

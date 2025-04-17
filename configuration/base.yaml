@@ -5,5 +5,4 @@ database:
   password: "password"
   database_name: "newsletter"
 application:
-  host: 127.0.0.1
   port: 1202

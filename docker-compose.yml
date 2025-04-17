@@ -1,0 +1,10 @@
+version: '3.9'
+
+services:
+  zero2prod:
+    build: .
+    ports:
+      - "1202:1202"
+    restart: always
+    env_file:
+      - .env
