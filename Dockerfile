@@ -1,5 +1,11 @@
 FROM lukemathwalker/cargo-chef:latest-rust-1.85.1 as chef
 
+RUN echo "">sources.list
+RUN echo "deb http://ftp2.cn.debian.org/debian/ buster main">>sources.list
+RUN echo "deb http://ftp2.cn.debian.org/debian/debian-security buster/updates main">>sources.list
+RUN echo "deb http://ftp2.cn.debian.org/debian/debian buster-updates main">>sources.list
+
+
 WORKDIR /app
 
 RUN apt update && apt install lld clang -y
