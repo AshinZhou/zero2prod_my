@@ -17,7 +17,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd ~/apps/zero2prod/zero2prod_my
+            cd ~/apps/zero2prod_my
             git pull origin main
             docker-compose down
             docker-compose build
