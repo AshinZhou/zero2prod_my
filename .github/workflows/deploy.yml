@@ -16,9 +16,35 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          envs:
+            APP_HOST: 0.0.0.0       # 例如 127.0.0.1
+            APP_PORT: 1202        # 例如 8000
+            DB_HOST: db        # 例如 127.0.0.1
+            DB_PORT: 5432        # 例如 5432
+            DB_USERNAME: ${{ secrets.DB_USERNAME }}      # 例如 postgres
+            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}      # 例如 password
+            DB_NAME: newsletter         # 例如 newsletter1
+            DB_REQUIRE_SSL: true   # true 或 false
           script: |
             cd ~/apps/zero2prod_my
             git pull origin main
+            
+            cat > configuration/production.yaml <<EOF
+            application:
+              host: ${APP_HOST}
+              port: ${APP_PORT}
+            
+            database:
+              host: "${DB_HOST}"
+              port: ${DB_PORT}
+              username: "${DB_USERNAME}"
+              password: "${DB_PASSWORD}"
+              database_name: "${DB_NAME}"
+              require_ssl: ${DB_REQUIRE_SSL}
+            EOF
+            
             docker-compose down
             docker-compose build
             docker-compose up -d
+            
+            
