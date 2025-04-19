@@ -21,7 +21,7 @@ jobs:
           DB_USERNAME:    ${{ secrets.DB_USERNAME }}
           DB_PASSWORD:    ${{ secrets.DB_PASSWORD }}
           DB_NAME:        "newsletter"
-          DB_REQUIRE_SSL: "false"
+          DB_REQUIRE_SSL: false
         with:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
