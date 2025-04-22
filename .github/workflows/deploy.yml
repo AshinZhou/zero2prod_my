@@ -25,11 +25,13 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
+#          这里要传入 envs 里面才能拿得到.
           envs: APP_HOST,APP_PORT,DB_HOST,DB_PORT,DB_USERNAME,DB_PASSWORD,DB_NAME,DB_REQUIRE_SSL
           script: |
             cd ~/apps/zero2prod_my
             git pull origin main
 
+# 打印参数
             echo "------ ENVIRONMENT CHECK ------"
             echo "APP_HOST=$APP_HOST"
             echo "APP_PORT=$APP_PORT"
