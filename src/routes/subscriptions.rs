@@ -1,4 +1,4 @@
-use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
+use crate::domain::{NewSubscriber};
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde::Deserialize;
