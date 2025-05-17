@@ -1,6 +1,6 @@
 use crate::domain::SubscriberEmail;
 use reqwest::{Client, Url};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 use std::time::Duration;
 
@@ -9,11 +9,11 @@ pub struct EmailClient {
     http_client: Client,
     base_url: Url,
     sender: SubscriberEmail,
-    authorization_token: SecretBox<String>,
+    authorization_token: SecretString,
 }
 
 impl EmailClient {
-    pub fn new(base_url: String, sender: SubscriberEmail, authorization_token: SecretBox<String>, timeout:Duration) -> Self {
+    pub fn new(base_url: String, sender: SubscriberEmail, authorization_token: SecretString, timeout: Duration) -> Self {
         let base_url = Url::parse(&base_url).expect("Invalid pares base_url to reqwest::Url");
         let http_client = Client::builder().timeout(timeout)
             .build()
@@ -27,7 +27,8 @@ impl EmailClient {
     }
 
     pub async fn send_email(&self, recipient: SubscriberEmail, subject: &str, html_content: &str, text_content: &str) -> Result<(), reqwest::Error> {
-        let url = self.base_url.join("email").expect("aa");
+        // let url = self.base_url.join("email").expect("aa");
+        let url = format!("{}/email", self.base_url);
         let request_body = SendEmailRequest::new(self.sender.as_ref(),
                                                  recipient.as_ref(),
                                                  subject,
@@ -36,7 +37,7 @@ impl EmailClient {
 
         self
             .http_client
-            .post(url)
+            .post(&url)
             .header("X-Postmark-Server-Token", self.authorization_token.expose_secret())
             .json(&request_body)
             .send()
@@ -74,7 +75,7 @@ mod tests {
     use fake::faker::internet::en::SafeEmail;
     use fake::faker::lorem::zh_cn::{Paragraph, Sentence};
     use fake::{Fake, Faker};
-    use secrecy::SecretBox;
+    use secrecy::SecretString;
     use std::time::Duration;
 
     use wiremock::matchers::{any, header, header_exists, method, path};
@@ -94,7 +95,8 @@ mod tests {
     }
 
     fn email_client(base_url: String) -> EmailClient {
-        EmailClient::new(base_url, email(), SecretBox::new(Faker.fake()), Duration::from_millis(200))
+        let fa = Faker.fake::<String>();    
+        EmailClient::new(base_url, email(), SecretString::from(fa), Duration::from_millis(200))
     }
     struct SendEmailBodyMatcher;
     impl Match for SendEmailBodyMatcher {

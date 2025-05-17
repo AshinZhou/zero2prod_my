@@ -1,22 +1,23 @@
 use crate::domain::SubscriberEmail;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use std::time::Duration;
+use config::ConfigError;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
     pub email_client: EmailClientSetting
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EmailClientSetting {
     pub base_url: String,
     pub sender_email: String,
-    pub authorization_token: SecretBox<String>,
+    pub authorization_token: SecretString,
     pub timeout_milliseconds: u64,
 }
 impl EmailClientSetting {
@@ -28,13 +29,14 @@ impl EmailClientSetting {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct ApplicationSettings {
     pub port: u16,
     pub host: String,
+    pub base_url: String
 }
 
-pub fn get_configuration() -> Result<Settings, config::ConfigError> {
+pub fn get_configuration() -> Result<Settings, ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine the current directory");
     let configuration_directory = base_path.join("configuration");
 
@@ -56,15 +58,16 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
 
     settings.try_deserialize::<Settings>()
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct DatabaseSettings {
     pub username: String,
-    pub password: SecretBox<String>,
+    pub password: SecretString,
     pub port: u16,
     pub host: String,
     pub database_name: String,
     pub require_ssl: bool,
 }
+
 impl DatabaseSettings {
     pub fn without_db(&self) -> PgConnectOptions {
         let ssl_mode = if self.require_ssl {

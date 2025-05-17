@@ -21,6 +21,7 @@ impl SubscriberEmail {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::{Debug, Formatter};
     use super::SubscriberEmail;
     use claims::assert_err;
     use fake::faker::internet::en::SafeEmail;
@@ -51,8 +52,12 @@ mod tests {
 
     impl quickcheck::Arbitrary for ValidEmailFixture {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let mut rng = StdRng::seed_from_u64(u64::arbitrary(g));
+            let seed = u64::arbitrary(g);
+            println!("seed:{seed}");
+            let mut rng = StdRng::seed_from_u64(seed);
+            println!("rng:{:?}", rng);
             let email = SafeEmail().fake_with_rng(&mut rng);
+            println!("email:{email}");
             Self(email)
         }
     }
