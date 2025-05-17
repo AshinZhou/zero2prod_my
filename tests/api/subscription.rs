@@ -65,6 +65,8 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
 
     for (invalid_body, error_message) in test_cases {
         let response = app.post_subscriptions(invalid_body.into()).await;
+        // 这里 会返回 400 是因为 它本身就缺少了参数, 直接在 actix::web
+        // 层面就会返回 400 不会走到 咱们的应用层.
         assert_eq!(
             400,
             response.status().as_u16(),
@@ -133,4 +135,28 @@ ALTER TABLE subscription_tokens DROP COLUMN subscription_token;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = app.post_subscriptions(body.into()).await;
     assert_eq!(response.status().as_u16(), 500);
+}
+
+#[tokio::test]
+async fn subscribe_returns_a_400_when_fields_are_present_but_invalid() {
+    // Arrange
+    let app = spawn_app().await;
+    let test_cases = vec![
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        ("name=Ursula&email=", "empty email"),
+        ("name=Ursula&email=definitely-not-an-email", "invalid email"),
+    ];
+
+    for (body, description) in test_cases {
+        // Act
+        let response = app.post_subscriptions(body.into()).await;
+
+        // Assert
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not return a 400 Bad Request when the payload was {}.",
+            description
+        );
+    }
 }

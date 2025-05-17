@@ -9,6 +9,7 @@ use reqwest::{Client, Error};
 use serde::Deserialize;
 use sqlx::{Executor, PgPool, Postgres, Transaction};
 use std::fmt::{Debug, Display, Formatter};
+use actix_web::http::StatusCode;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -24,33 +25,18 @@ subscriber_email = %form.email,
 subscriber_name = form.name
     )
 )]
-pub async fn subscribe(web::Form(form): web::Form<FormData>, pool: web::Data<PgPool>, email_client: web::Data<EmailClient>, base_url: web::Data<ApplicationBaseUrl>) -> Result<HttpResponse, actix_web::Error> {
-    println!("form:{:?}, ", form);
-    let subscriber_form = match form.try_into() {
-        Ok(form) => form,
-        Err(_) => return Ok(HttpResponse::BadRequest().finish()),
-    };
+pub async fn subscribe(web::Form(form): web::Form<FormData>, pool: web::Data<PgPool>, email_client: web::Data<EmailClient>, base_url: web::Data<ApplicationBaseUrl>)
+                       -> Result<HttpResponse, SubscribeError> {
+    let subscriber_form = form.try_into().map_err(SubscribeError::ValidationError)?;
     let token = generate_subscription_token();
-    let mut transaction = match pool.begin().await {
-        Ok(transaction) => transaction,
-        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
-    };
+    let mut transaction = pool.begin().await?;
 
-    let subscriber_id = match insert_subscriber(&subscriber_form, &mut transaction).await {
-        Ok(id) => id,
-        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
-    };
+    let subscriber_id = insert_subscriber(&subscriber_form, &mut transaction).await?;
 
     store_token(&mut transaction, subscriber_id, &token).await?;
-    if transaction.commit().await.is_err() {
-        return Ok(HttpResponse::InternalServerError().finish());
-    }
-    if send_confirmation_email(&email_client, subscriber_form, &base_url.0, token).await.is_err()
-    {
-        return Ok(HttpResponse::InternalServerError().finish())
-    }
-
-
+    transaction.commit().await?;
+    send_confirmation_email(&email_client, subscriber_form, &base_url.0, token).await?;
+    
     Ok(HttpResponse::Ok().finish())
 
 }
@@ -140,9 +126,54 @@ impl std::error::Error for StoreTokenError {
         Some(&self.0)
     }
 }
+#[derive(Debug)]
+pub enum SubscribeError {
+    ValidationError(String),
+    StoreTokenError(StoreTokenError),
+    DatabaseError(sqlx::Error),
+    SendEmailError(reqwest::Error),
+}
 
-impl ResponseError for StoreTokenError {}
+impl Display for SubscribeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to create a new subscriber.")
+    }
+}
 
+impl std::error::Error for SubscribeError {}
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            SubscribeError::StoreTokenError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            SubscribeError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            SubscribeError::SendEmailError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<StoreTokenError> for SubscribeError {
+    fn from(value: StoreTokenError) -> Self {
+        Self::StoreTokenError(value)
+    }
+}
+
+impl From<sqlx::Error> for SubscribeError {
+    fn from(value: sqlx::Error) -> Self {
+        Self::DatabaseError(value)
+    }
+}
+impl From<String> for SubscribeError {
+    fn from(value: String) -> Self {
+        Self::ValidationError(value)
+    }
+}
+impl From<reqwest::Error> for SubscribeError {
+    fn from(value: reqwest::Error) -> Self {
+        Self::SendEmailError(value)
+    }
+}
 
 #[tracing::instrument(
     name = "Store subscription token in the database",
