@@ -24,7 +24,7 @@ async fn the_link_return_by_subscriber_returns_a_200_if_called() {
         .await;
     app.post_subscriptions(body.into()).await;
 
-    let get_link = |str: &str| {
+    let _get_link = |str: &str| {
         let links: Vec<_> = linkify::LinkFinder::new()
             .links(str)
             .filter(|l| *l.kind() == linkify::LinkKind::Url)
@@ -33,7 +33,7 @@ async fn the_link_return_by_subscriber_returns_a_200_if_called() {
         links[0].as_str().to_owned()
     };
 
-    let mut confirmation_link = app.get_confirmation_links().await.html;
+    let confirmation_link = app.get_confirmation_links().await.html;
 
 
     let response = reqwest::get(confirmation_link).await.unwrap();
@@ -50,7 +50,7 @@ async fn clicking_on_the_confirmation_link_confirms_a_subscriber() {
         .mount(&app.email_server)
         .await;
     app.post_subscriptions(body.into()).await;
-    let mut confirmation_link = app.get_confirmation_links().await.html;
+    let  confirmation_link = app.get_confirmation_links().await.html;
     let response = reqwest::get(confirmation_link).await.unwrap().error_for_status().unwrap();
     assert_eq!(response.status().as_u16(), 200);
 

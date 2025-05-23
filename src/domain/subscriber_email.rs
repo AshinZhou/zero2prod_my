@@ -21,13 +21,13 @@ impl SubscriberEmail {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::{Debug, Formatter};
     use super::SubscriberEmail;
     use claims::assert_err;
     use fake::faker::internet::en::SafeEmail;
     use fake::Fake;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use std::fmt::Debug;
 
     #[test]
     fn empty_string_is_rejected() {

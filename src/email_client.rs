@@ -14,7 +14,9 @@ pub struct EmailClient {
 
 impl EmailClient {
     pub fn new(base_url: String, sender: SubscriberEmail, authorization_token: SecretString, timeout: Duration) -> Self {
+        tracing::info!("before parse base_url: {}", base_url);
         let base_url = Url::parse(&base_url).expect("Invalid pares base_url to reqwest::Url");
+        tracing::info!("after parse base_url: {}", base_url);
         let http_client = Client::builder().timeout(timeout)
             .build()
             .unwrap();
@@ -26,9 +28,10 @@ impl EmailClient {
         }
     }
 
-    pub async fn send_email(&self, recipient: SubscriberEmail, subject: &str, html_content: &str, text_content: &str) -> Result<(), reqwest::Error> {
+    pub async fn send_email(&self, recipient: &SubscriberEmail, subject: &str, html_content: &str, text_content: &str) -> Result<(), reqwest::Error> {
         // let url = self.base_url.join("email").expect("aa");
-        let url = format!("{}/email", self.base_url);
+
+        let url = self.base_url.join("email").unwrap();
         let request_body = SendEmailRequest::new(self.sender.as_ref(),
                                                  recipient.as_ref(),
                                                  subject,
@@ -37,7 +40,7 @@ impl EmailClient {
 
         self
             .http_client
-            .post(&url)
+            .post(url)
             .header("X-Postmark-Server-Token", self.authorization_token.expose_secret())
             .json(&request_body)
             .send()
@@ -131,7 +134,7 @@ mod tests {
             .await;
 
         let _ = email_client
-            .send_email(email(), &subject(), &content(), &content()).await;
+            .send_email(&email(), &subject(), &content(), &content()).await;
     }
 
     #[tokio::test]
@@ -147,7 +150,7 @@ mod tests {
 
 
         let outcome = email_client
-            .send_email(email(), &subject(), &content(), &content()).await;
+            .send_email(&email(), &subject(), &content(), &content()).await;
 
         assert_ok!(outcome)
     }
@@ -165,7 +168,7 @@ mod tests {
             .await;
 
         let outcome = email_client
-            .send_email(email(), &subject(), &content(), &content()).await;
+            .send_email(&email(), &subject(), &content(), &content()).await;
 
         assert_err!(outcome);
     }
@@ -183,7 +186,7 @@ mod tests {
             .await;
 
         let outcome = email_client
-            .send_email(email(), &subject(), &content(), &content()).await;
+            .send_email(&email(), &subject(), &content(), &content()).await;
 
         assert_err!(outcome);
     }

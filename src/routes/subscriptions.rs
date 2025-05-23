@@ -1,12 +1,12 @@
 use crate::domain::NewSubscriber;
 use crate::email_client::EmailClient;
 use crate::startup::ApplicationBaseUrl;
-use crate::telemetry::init_subscriber;
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse, ResponseError};
+use anyhow::Context;
 use chrono::Utc;
 use rand::Rng;
-use reqwest::{Client, Error};
+use reqwest::Error;
 use serde::Deserialize;
 use sqlx::{Executor, PgPool, Postgres, Transaction};
 use std::fmt::{Debug, Display, Formatter};
@@ -29,14 +29,14 @@ pub async fn subscribe(web::Form(form): web::Form<FormData>, pool: web::Data<PgP
                        -> Result<HttpResponse, SubscribeError> {
     let subscriber_form = form.try_into().map_err(SubscribeError::ValidationError)?;
     let token = generate_subscription_token();
-    let mut transaction = pool.begin().await.map_err(SubscribeError::PoolError)?;
+    let mut transaction = pool.begin().await.context("Failed to acquire a Postgres connection from the pool")?;
 
-    let subscriber_id = insert_subscriber(&subscriber_form, &mut transaction).await.map_err(SubscribeError::InsertSubscriberError)?;
+    let subscriber_id = insert_subscriber(&subscriber_form, &mut transaction).await.context("Failed to insert new subscriber in the database")?;
 
-    store_token(&mut transaction, subscriber_id, &token).await?;
-    transaction.commit().await.map_err(SubscribeError::TransactionCommitError)?;
-    send_confirmation_email(&email_client, subscriber_form, &base_url.0, token).await?;
-    
+    store_token(&mut transaction, subscriber_id, &token).await.context("Failed to store the confirmation token for a new subscriber.")?;
+    transaction.commit().await.context("Failed to commit SQL transaction to store a new subscriber.")?;
+    send_confirmation_email(&email_client, subscriber_form, &base_url.0, token).await.context("Failed to send a confirmation email")?;
+
     Ok(HttpResponse::Ok().finish())
 
 }
@@ -49,7 +49,7 @@ async fn send_confirmation_email(email_client: &EmailClient, subscriber_form: Ne
     let confirmation_link = format!("{}/subscriptions/confirm?subscription_token={}", base_url, token);
     email_client
         .send_email(
-            subscriber_form.email,
+            &subscriber_form.email,
             "Welcome!",
             &format!(
                 "Welcome to our newsletter {} <br />\
@@ -99,115 +99,7 @@ fn generate_subscription_token() -> String {
 }
 
 
-struct StoreTokenError(sqlx::Error);
 
-impl Debug for StoreTokenError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "{}\n Caused by:\n\t{}", self, self.0)
-        // 这里因为 实现了 Error 的 source . 
-        error_chain_fmt(self, f)
-    }
-
-}
-
-impl Display for StoreTokenError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "A database error was encountered while \
-               trying to store a subscription token."
-        )
-    }
-}
-// 这里实现 source 就可以使用链式调用的方法 ,循环递归错误信息了.这是一种约定俗成的方法.我们
-// 我们在代码开发阶段对 source 进行规范的定义, 在后文中就可以更好 的使用.
-impl std::error::Error for StoreTokenError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-pub enum SubscribeError {
-    ValidationError(String),
-    StoreTokenError(StoreTokenError),
-    InsertSubscriberError(sqlx::Error),
-    PoolError(sqlx::Error),
-    TransactionCommitError(sqlx::Error),
-    SendEmailError(reqwest::Error),
-}
-
-impl Debug for SubscribeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-impl Display for SubscribeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubscribeError::ValidationError(e) => { write!(f, "{}", e) }
-            SubscribeError::StoreTokenError(e) => {
-                write!(
-                    f,
-                    "A database error was encountered while \
-                trying to store a subscription token."
-                )
-            }
-            SubscribeError::InsertSubscriberError(_) => {
-                write!(f, "Failed to insert new subscriber.")
-            }
-            SubscribeError::PoolError(_) => {
-                write!(f, "Failed to acquire a Postgres connection from the pool.")
-            }
-            SubscribeError::TransactionCommitError(_) => {
-                write!(f, "Failed to commit SQL transaction to store a new subscriber.")
-            }
-            SubscribeError::SendEmailError(e) => {
-                write!(f, "Failed to send a confirmation email: {}", e)
-            }
-        }
-    }
-}
-
-impl std::error::Error for SubscribeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            SubscribeError::ValidationError(_) => { None }
-            SubscribeError::StoreTokenError(e) => { Some(e) }
-            SubscribeError::InsertSubscriberError(e) => { Some(e) }
-            SubscribeError::PoolError(e) => { Some(e) }
-            SubscribeError::TransactionCommitError(e) => { Some(e) }
-            SubscribeError::SendEmailError(e) => { Some(e) }
-        }
-    }
-}
-
-
-impl ResponseError for SubscribeError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl From<StoreTokenError> for SubscribeError {
-    fn from(value: StoreTokenError) -> Self {
-        Self::StoreTokenError(value)
-    }
-}
-
-impl From<String> for SubscribeError {
-    fn from(value: String) -> Self {
-        Self::ValidationError(value)
-    }
-}
-impl From<reqwest::Error> for SubscribeError {
-    fn from(value: reqwest::Error) -> Self {
-        Self::SendEmailError(value)
-    }
-}
 
 #[tracing::instrument(
     name = "Store subscription token in the database",
@@ -234,7 +126,7 @@ pub async fn store_token(
 }
 
 // 这个方法就是一直循环调用 source 方法, 直到 source 返回 None 为止 去格式化错误原因,层层递归.
-fn error_chain_fmt(
+pub fn error_chain_fmt(
     e: &impl std::error::Error,
     f: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
@@ -247,3 +139,54 @@ fn error_chain_fmt(
     Ok(())
 }
 
+
+struct StoreTokenError(sqlx::Error);
+
+impl Debug for StoreTokenError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // write!(f, "{}\n Caused by:\n\t{}", self, self.0)
+        // 这里因为 实现了 Error 的 source .
+        error_chain_fmt(self, f)
+    }
+}
+
+impl Display for StoreTokenError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "A database error was encountered while \
+               trying to store a subscription token."
+        )
+    }
+}
+// 这里实现 source 就可以使用链式调用的方法 ,循环递归错误信息了.这是一种约定俗成的方法.我们
+// 我们在代码开发阶段对 source 进行规范的定义, 在后文中就可以更好 的使用.
+impl std::error::Error for StoreTokenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("{0}")]
+    ValidationError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl Debug for SubscribeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
