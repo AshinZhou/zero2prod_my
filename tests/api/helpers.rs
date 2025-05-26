@@ -40,7 +40,16 @@ impl TestUser {
 
         let salt = SaltString::generate(&mut rand::thread_rng());
 
-        let password_hash = argon2::Argon2::default()
+        // let password_hash = argon2::Argon2::default()
+        //     .hash_password(self.password.as_bytes(), &salt)
+        //     .unwrap()
+        //     .to_string();  
+        // 这里配置成一样, 就是因为 记录, 和 默认密码 的参数相同,计算时间也就相同. 所以不使用默认模式了, 虽然默认模式可能时间一样? 但是他不一定时间一样哦.
+        let password_hash = argon2::Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(15000, 2, 1, None).unwrap(),
+        )
             .hash_password(self.password.as_bytes(), &salt)
             .unwrap()
             .to_string();
@@ -64,7 +73,7 @@ pub struct TestApp {
     pub db_pool: PgPool,
     pub email_server: MockServer,
     pub port: u16,
-    test_user: TestUser
+    pub test_user: TestUser
 }
 
 pub struct ConfirmationLinks {

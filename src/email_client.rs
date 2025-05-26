@@ -14,9 +14,7 @@ pub struct EmailClient {
 
 impl EmailClient {
     pub fn new(base_url: String, sender: SubscriberEmail, authorization_token: SecretString, timeout: Duration) -> Self {
-        tracing::info!("before parse base_url: {}", base_url);
         let base_url = Url::parse(&base_url).expect("Invalid pares base_url to reqwest::Url");
-        tracing::info!("after parse base_url: {}", base_url);
         let http_client = Client::builder().timeout(timeout)
             .build()
             .unwrap();

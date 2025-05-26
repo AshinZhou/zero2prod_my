@@ -1,6 +1,8 @@
+use crate::authentication::{validate_credentials, AuthError, Credentials};
 use crate::domain::SubscriberEmail;
 use crate::email_client::EmailClient;
 use crate::routes::error_chain_fmt;
+use crate::telemetry::spawn_blocking_with_tracing;
 use actix_web::body::BoxBody;
 use actix_web::http::header::{HeaderMap, HeaderValue};
 use actix_web::http::{header, StatusCode};
@@ -47,14 +49,13 @@ impl Debug for PublishError {
 impl ResponseError for PublishError {
     fn error_response(&self) -> HttpResponse<BoxBody> {
         match self {
-            PublishError::AuthError(_) => { HttpResponse::new(StatusCode::UNAUTHORIZED) }
-            PublishError::UnexpectedError(_) => {
-                let mut response = HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR);
+            PublishError::UnexpectedError(_) => { HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR) }
+            PublishError::AuthError(_) => {
+                let mut response = HttpResponse::new(StatusCode::UNAUTHORIZED);
                 let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
 
                 response.headers_mut()
                     .insert(header::WWW_AUTHENTICATE, header_value);
-
                 response
             }
         }
@@ -81,7 +82,10 @@ pub async fn publish_newsletters(
         "username",
         &tracing::field::display(&credentials.username),
     );
-    let user_id = validate_credentials(credentials, &pool).await?;
+    let user_id = validate_credentials(credentials, &pool).await.map_err(|e| match e {
+        AuthError::InvalidCredentials(_) => { PublishError::AuthError(e.into()) }
+        AuthError::InternalError(_) => { PublishError::UnexpectedError(e.into()) }
+    })?;
     tracing::Span::current().record(
         "user_id",
         &tracing::field::display(&user_id),
@@ -134,10 +138,6 @@ r#"
     Ok(confirmed_subscribers)
 }
 
-struct Credentials {
-    username: String,
-    password: SecretString,
-}
 
 fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
     let header_value = headers
@@ -176,60 +176,3 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
     })
 }
 
-#[tracing::instrument(
-    name = "Validate credentials",
-    skip(credentials, pool)
-)]
-async fn validate_credentials(credentials: Credentials, pool: &PgPool) -> Result<uuid::Uuid, PublishError> {
-    let (user_id, expected_password_hash) = get_stored_credentials(&credentials.username, pool)
-        .await
-        .map_err(PublishError::UnexpectedError)?
-        .ok_or_else(|| PublishError::AuthError(anyhow::anyhow!("Unknown username")))?;
-    let expected_password_hash = SecretString::from(expected_password_hash);
-    tokio::task::spawn_blocking(move || {
-        verify_password_hash(expected_password_hash, credentials.password)
-    })
-        .await
-        .context("Invalid password")
-        .map_err(PublishError::AuthError)??;
-    Ok(user_id)
-}
-
-#[tracing::instrument(
-    name = "Verify password hash",
-    skip(expected_password_hash, provided_password)
-)]
-fn verify_password_hash(
-    expected_password_hash: SecretString,
-    provided_password: SecretString,
-) -> Result<(), PublishError> {
-    let expected_password_hash = PasswordHash::new(&expected_password_hash.expose_secret())
-        .context("Failed to parse hash in PHC string format")
-        .map_err(PublishError::UnexpectedError)?;
-    Argon2::default()
-        .verify_password(provided_password.expose_secret().as_bytes(), &expected_password_hash)
-        .map_err(|_err| PublishError::AuthError(anyhow::anyhow!("Invalid password")))
-}
-
-#[tracing::instrument(
-    name = "Get stored credentials",
-    skip(username, pool)
-)]
-async fn get_stored_credentials(
-    username: &str,
-    pool: &PgPool,
-) -> Result<Option<(uuid::Uuid, String)>, anyhow::Error> {
-    let row = sqlx::query!(
-        r#"
-SELECT user_id, password_hash
-FROM users
-WHERE username = $1
-"#,
-        username
-    )
-        .fetch_optional(pool)
-        .await
-        .context("Failed to perform a query to retrieve stored credentials.")?
-        .map(|row| (row.user_id, row.password_hash));
-    Ok(row)
-}
