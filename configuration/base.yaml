@@ -7,6 +7,7 @@ database:
 application:
   port: 1202
   base_url: "http://127.0.0.1"
+  hmac_secret: "super-long-and-secret-random-key-needed-to-verify-message-integrity"
 email_client:
   base_url: "http://localhost"
   sender_email: "test@gamil.com"

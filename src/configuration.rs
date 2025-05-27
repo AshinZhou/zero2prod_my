@@ -33,7 +33,8 @@ impl EmailClientSetting {
 pub struct ApplicationSettings {
     pub port: u16,
     pub host: String,
-    pub base_url: String
+    pub base_url: String,
+    pub hmac_secret: SecretString
 }
 
 pub fn get_configuration() -> Result<Settings, ConfigError> {
