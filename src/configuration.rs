@@ -1,16 +1,17 @@
 use crate::domain::SubscriberEmail;
+use config::ConfigError;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use std::time::Duration;
-use config::ConfigError;
 
 #[derive(Deserialize, Clone)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
-    pub email_client: EmailClientSetting
+    pub email_client: EmailClientSetting,
+    pub redis_uri: SecretString
 }
 
 #[derive(Deserialize, Clone)]

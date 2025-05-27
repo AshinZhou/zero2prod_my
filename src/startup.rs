@@ -3,13 +3,17 @@ use crate::email_client::EmailClient;
 use crate::routes::get::login_form;
 use crate::routes::post::login;
 use crate::routes::{confirm, health_check, home, publish_newsletters, subscribe};
+use actix_session::storage::RedisSessionStore;
+use actix_session::SessionMiddleware;
+use actix_web::cookie::Key;
 use actix_web::dev::Server;
 use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
-use secrecy::SecretString;
+use actix_web_flash_messages::storage::CookieMessageStore;
+use actix_web_flash_messages::FlashMessagesFramework;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use std::io::Error;
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
@@ -18,7 +22,7 @@ pub struct Application {
     server: Server,
 }
 impl Application {
-    pub async fn build(configuration: Settings) -> Result<Self, Error> {
+    pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
 
         let sender_email = configuration.email_client.sender().expect("Invalid sender email address.");
@@ -32,7 +36,14 @@ impl Application {
         );
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr()?.port();
-        let server = run(listener, connection_pool, email_client, configuration.application.base_url, configuration.application.hmac_secret)?;
+        let server = run(
+            listener,
+            connection_pool,
+            email_client,
+            configuration.application.base_url,
+            configuration.application.hmac_secret,
+            configuration.redis_uri,
+        ).await?;
         Ok(Self {
             port,
             server,
@@ -57,13 +68,27 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 
 pub struct ApplicationBaseUrl(pub String);
 
-fn run(listener: TcpListener, db_pool: PgPool, email_client: EmailClient, base_url: String, hmac_secret: SecretString) -> std::io::Result<Server> {
+async fn run(
+    listener: TcpListener,
+    db_pool: PgPool,
+    email_client: EmailClient,
+    base_url: String,
+    hmac_secret: SecretString,
+    redis_uri: SecretString,
+    // 下面因为 改异步和使用 RedisSessionStore::new(redis_uri.expose_secret()).await?; 这行代码有变化
+) -> Result<Server, anyhow::Error> {
     let db_pool = web::Data::new(db_pool);
     let email_client = Data::new(email_client);
     let base_url = Data::new(ApplicationBaseUrl(base_url));
+    let secret_key = Key::from(hmac_secret.expose_secret().as_bytes());
+    let messages_store = CookieMessageStore::builder(secret_key.clone()).build();
+    let message_framework = FlashMessagesFramework::builder(messages_store).build();
+    let redis_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(SessionMiddleware::new(redis_store.clone(), secret_key.clone()))
             .wrap(TracingLogger::default())
+            .wrap(message_framework.clone())
             .route("/health_check", web::get().to(health_check))
             .route("/subscriptions", web::post().to(subscribe))
             .route("/subscriptions/confirm", web::get().to(confirm))
