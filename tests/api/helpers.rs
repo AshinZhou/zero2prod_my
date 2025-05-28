@@ -1,7 +1,8 @@
 use argon2::password_hash::SaltString;
 use argon2::PasswordHasher;
 use once_cell::sync::Lazy;
-use reqwest::Url;
+use reqwest::{Response, Url};
+use serde::Serialize;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
@@ -36,15 +37,13 @@ impl TestUser {
         }
     }
 
-
     pub async fn store(&self, pool: &PgPool) {
-
         let salt = SaltString::generate(&mut rand::thread_rng());
 
         // let password_hash = argon2::Argon2::default()
         //     .hash_password(self.password.as_bytes(), &salt)
         //     .unwrap()
-        //     .to_string();  
+        //     .to_string();
         // 这里配置成一样, 就是因为 记录, 和 默认密码 的参数相同,计算时间也就相同. 所以不使用默认模式了, 虽然默认模式可能时间一样? 但是他不一定时间一样哦.
         let password_hash = argon2::Argon2::new(
             argon2::Algorithm::Argon2id,
@@ -75,8 +74,9 @@ pub struct TestApp {
     pub email_server: MockServer,
     pub port: u16,
     pub test_user: TestUser,
-    pub api_client: reqwest::Client
+    pub api_client: reqwest::Client,
 }
+
 
 pub struct ConfirmationLinks {
     pub html: Url,
@@ -89,6 +89,57 @@ pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
 }
 
 impl TestApp {
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/admin/logout", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    pub async fn post_test_user_login(&self) {
+        self.post_login(&serde_json::json!({
+            "username": &self.test_user.username,
+            "password": &self.test_user.password
+        }))
+            .await;
+    }
+
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/admin/password", self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password().await
+            .text().await.unwrap()
+    }
+
+    pub async fn post_change_password<Body>(&self, body: &Body) -> Response
+    where
+        Body: Serialize,
+    {
+        self.api_client
+            .post(format!("{}/admin/password", self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
+        self.api_client
+            .get(&format!("{}/admin/dashboard", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+    pub async fn get_admin_dashboard_html(&self) -> String {
+        self.get_admin_dashboard().await.text().await.unwrap()
+    }
+
     pub async fn get_login_html(&self) -> String {
         self.api_client
             .get(&format!("{}/login", self.address))
@@ -112,7 +163,8 @@ impl TestApp {
             .expect("Failed to execute request")
     }
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
-        let response = self.api_client
+        let response = self
+            .api_client
             .post(format!("{}/subscriptions", &self.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
@@ -153,7 +205,6 @@ impl TestApp {
     }
 }
 
-
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
     let email_server = MockServer::start().await;
@@ -165,7 +216,9 @@ pub async fn spawn_app() -> TestApp {
     tracing::info!("Configuration: {:#?}", configuration.email_client.base_url);
     configure_database(&configuration.database).await;
 
-    let application = Application::build(configuration.clone()).await.expect("Failed to build application");
+    let application = Application::build(configuration.clone())
+        .await
+        .expect("Failed to build application");
     let port = application.port();
     let address = format!("http://localhost:{}", port);
     let _ = tokio::spawn(application.run_until_stopped());
@@ -180,18 +233,16 @@ pub async fn spawn_app() -> TestApp {
         email_server,
         port,
         test_user: TestUser::generate(),
-        api_client: client
+        api_client: client,
     };
     test_app.test_user.store(&test_app.db_pool).await;
     test_app
 }
 
-
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    let mut connection =
-        PgConnection::connect_with(&config.without_db())
-            .await
-            .expect("Failed to connect Postgres");
+    let mut connection = PgConnection::connect_with(&config.without_db())
+        .await
+        .expect("Failed to connect Postgres");
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
         .await
@@ -207,6 +258,3 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
 
     connection_pool
 }
-
-
-
