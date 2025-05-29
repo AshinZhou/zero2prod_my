@@ -26,6 +26,7 @@ impl EmailClient {
         }
     }
 
+    
     pub async fn send_email(&self, recipient: &SubscriberEmail, subject: &str, html_content: &str, text_content: &str) -> Result<(), reqwest::Error> {
         // let url = self.base_url.join("email").expect("aa");
 

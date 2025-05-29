@@ -1,16 +1,11 @@
-use crate::session_state::TypedSession;
-use crate::utils::{e500, see_other};
 use actix_web::http::header::ContentType;
 use actix_web::{Error, HttpResponse};
 use actix_web_flash_messages::IncomingFlashMessages;
 use std::fmt::Write;
 
-pub async fn change_password_form(session: TypedSession, flash_message: IncomingFlashMessages) -> Result<HttpResponse, Error> {
+pub async fn change_password_form(flash_message: IncomingFlashMessages) -> Result<HttpResponse, Error> {
 
     // 这里后面可以我们自己尝试实现一个中间件,464 页课本.
-    if session.get_user_id().map_err(e500)?.is_none() {
-        return Ok(see_other("/login"));
-    }
 
     let mut msg_html = String::new();
 

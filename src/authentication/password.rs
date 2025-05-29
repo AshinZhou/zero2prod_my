@@ -9,7 +9,7 @@ use uuid::Uuid;
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
     #[error("Invalid credentials ")]
-    InvalidCredentials(#[source] anyhow::Error),    
+    InvalidCredentials(#[source] anyhow::Error),
     #[error(transparent)]
     InternalError(#[from] anyhow::Error),
 }

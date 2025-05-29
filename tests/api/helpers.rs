@@ -183,9 +183,31 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
+    pub async fn get_publish_newsletter(&self) -> reqwest::Response {
+        self.api_client
+            .get(&format!("{}/admin/newsletters", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
 
+    pub async fn get_publish_newsletter_html(&self) -> String {
+        self.get_publish_newsletter().await.text().await.unwrap()
+    }
+    pub async fn post_publish_newsletter<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/admin/newsletters", &self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
     pub async fn get_confirmation_links(&self) -> ConfirmationLinks {
-        let request = &self.email_server.received_requests().await.unwrap()[0];
+        let requests = self.email_server.received_requests().await.unwrap();
+        let request = &requests[requests.len() - 1];  // 获取最后一个请求
         let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()

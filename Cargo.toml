@@ -16,6 +16,7 @@ quickcheck_macros = "1.0.0"
 wiremock = "0.6.3"
 linkify = "0.10.0"
 serde_json = "1.0.140"
+serde_urlencoded = "0.7.1"
 
 [dependencies]
 actix-web = "4.10.2"
@@ -40,6 +41,7 @@ argon2 = {version = "0.5.3", features = ["std"]}
 base64 = "0.22.1"
 actix-web-flash-messages = { version = "0.5.0", features = ["cookies"] }
 actix-session = { version = "0.10.1", features = ["redis-session-native-tls"] }
+actix-web-lab = "0.24.1"
 
 [dependencies.sqlx]
 version = "=0.8.3"
