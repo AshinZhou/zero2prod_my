@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM issue_delivery_queue\nWHERE newsletter_issue_id = $1 AND\n      subscriber_email = $2\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "58f649cc760e531c4a10f5fdb5424e0565bfe628429208d2a306e07d4281db3c"
+}

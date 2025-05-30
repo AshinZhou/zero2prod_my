@@ -7,6 +7,8 @@ use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
 use zero2prod_my::configuration::{get_configuration, DatabaseSettings};
+use zero2prod_my::email_client::EmailClient;
+use zero2prod_my::issue_delivery_worker::{try_execute_task, ExecutionOutcome};
 use zero2prod_my::startup::{get_connection_pool, Application};
 use zero2prod_my::telemetry::{get_subscriber, init_subscriber};
 
@@ -75,6 +77,7 @@ pub struct TestApp {
     pub port: u16,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
+    pub email_client: EmailClient
 }
 
 
@@ -89,6 +92,18 @@ pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
 }
 
 impl TestApp {
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue =
+                try_execute_task(&self.db_pool, &self.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }
+        }
+    }
+    
     pub async fn post_logout(&self) -> reqwest::Response {
         self.api_client
             .post(format!("{}/admin/logout", self.address))
@@ -256,6 +271,7 @@ pub async fn spawn_app() -> TestApp {
         port,
         test_user: TestUser::generate(),
         api_client: client,
+        email_client: configuration.email_client.client()
     };
     test_app.test_user.store(&test_app.db_pool).await;
     test_app
