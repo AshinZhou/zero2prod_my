@@ -28,7 +28,7 @@ async fn worker_loop(
             Ok(ExecutionOutcome::EmptyQueue) => {
                 tokio::time::sleep(Duration::from_secs(10)).await;
             }
-            Err(e) => {
+            Err(_) => {
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
             Ok(ExecutionOutcome::TaskCompleted) => {}

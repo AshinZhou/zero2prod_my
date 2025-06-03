@@ -1,6 +1,4 @@
 use crate::authentication::UserId;
-use crate::domain::SubscriberEmail;
-use crate::email_client::EmailClient;
 use crate::idempotency::{save_response, try_processing, IdempotencyKey, NextAction};
 use crate::utils::{e400, e500, see_other};
 use actix_web::web::ReqData;
@@ -20,14 +18,13 @@ pub struct FormData {
 
 #[tracing::instrument(
     name = "Publish a newsletter issue",
-    skip(form, pool, email_client, user_id),
+    skip(form, pool, user_id),
     fields(user_id=%*user_id)
 )]
 pub async fn publish_newsletter(
     form: web::Form<FormData>,
     user_id: ReqData<UserId>,
     pool: web::Data<PgPool>,
-    email_client: web::Data<EmailClient>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let user_id = user_id.into_inner();
     let FormData { title, text_content, html_content, idempotency_key } = form.0;
@@ -63,31 +60,6 @@ fn success_message() -> FlashMessage {
         "The newsletter issue has been accepted - \
         emails will go out shortly.",
     )
-}
-struct ConfirmedSubscriber {
-    email: SubscriberEmail,
-}
-
-#[tracing::instrument(name = "Get confirmed subscribers", skip(pool))]
-async fn get_confirmed_subscribers(
-    pool: &PgPool,
-) -> Result<Vec<Result<ConfirmedSubscriber, anyhow::Error>>, anyhow::Error> {
-    let confirmed_subscribers = sqlx::query!(
-        r#"
-        SELECT email
-        FROM subscriptions
-        WHERE status = 'confirmed'
-        "#,
-    )
-        .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(|r| match SubscriberEmail::parse(r.email) {
-            Ok(email) => Ok(ConfirmedSubscriber { email }),
-            Err(error) => Err(anyhow::anyhow!(error)),
-        })
-        .collect();
-    Ok(confirmed_subscribers)
 }
 
 async fn insert_newsletter_issue(
@@ -128,7 +100,7 @@ async fn enqueue_delivery_tasks(
     let query = sqlx::query!(
         r#"
         INSERT INTO issue_delivery_queue (
-            newsletter_issue_id, 
+            newsletter_issue_id,
             subscriber_email
         )
         SELECT $1, email

@@ -4,7 +4,7 @@ use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse};
 use anyhow::Context;
 use sqlx::PgPool;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug};
 use uuid::Uuid;
 
 pub async fn admin_dashboard(
